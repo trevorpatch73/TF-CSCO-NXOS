@@ -1,0 +1,64 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    env:
+      TERRAFORM_STATUS: apply
+      #TERRAFORM_STATUS: destroy 
+      #TF_LOG: "DEBUG"
+      TF_VAR_CSCO_NXOS_TF_USERNAME: ${{ secrets.TF_VAR_CSCO_NXOS_TF_USERNAME }}
+      TF_VAR_CSCO_NXOS_TF_PASSWORD: ${{ secrets.TF_VAR_CSCO_NXOS_TF_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3       
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1 
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan
+        continue-on-error: true
+
+      - name: Terraform Plan Status
+        if: github.event_name == 'pull_request' && steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        id: apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.TERRAFORM_STATUS == 'apply'
+        run: terraform apply --auto-approve
+        continue-on-error: true
+
+      - name: Terraform Apply Status
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && steps.apply.outcome == 'failure' && env.TERRAFORM_STATUS == 'apply'
+        run:
+          exit 1    
+
+      - name: Terraform Destroy
+        id: destroy
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && env.TERRAFORM_STATUS == 'destroy'
+        run: | 
+          terraform destroy --auto-approve

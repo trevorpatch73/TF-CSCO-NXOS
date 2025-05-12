@@ -13,7 +13,7 @@ provider "nxos" {
   alias    = "DEVICE_1"
   username = var.CSCO_NXOS_TF_USERNAME
   password = var.CSCO_NXOS_TF_PASSWORD
-  url      = "https://X.X.X.X"
+  url      = "https://sbx-nxos-mgmt.cisco.com/"
   insecure = true
 }
 
