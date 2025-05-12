@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy Changed Pairs
+    name: Deploy All Pairs
     runs-on: ubuntu-latest
     env:
       TERRAFORM_STATUS: apply
@@ -22,39 +22,23 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v1
 
-      - name: Find changed pair directories
-        id: find_dirs
+      - name: Find all SITE-X/PAIR-Y directories
+        id: find_all_pairs
         run: |
-          echo "🔍 Finding changed SITE-X/PAIR-Y directories..."
+          echo "🔍 Finding all SITE-X/PAIR-Y directories..."
+          find SITE-* -type d -name "PAIR-*" > all_pairs.txt
+          echo "pairs=$(cat all_pairs.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "Fetching base ref: ${{ github.base_ref }}"
-            git fetch origin ${{ github.base_ref }} --depth=1
-            DIFF_BASE="origin/${{ github.base_ref }}"
-          else
-            DIFF_BASE="${{ github.sha }}^"
-          fi
-
-          CHANGED_DIRS=$(git diff --name-only "$DIFF_BASE" ${{ github.sha }} | grep '^SITE-' | grep 'PAIR-' | cut -d/ -f1,2 | sort -u)
-
-          echo "Changed directories:"
-          echo "$CHANGED_DIRS"
-
-          echo "$CHANGED_DIRS" > changed_dirs.txt
-          echo "pairs=$(echo $CHANGED_DIRS | tr '\n' ' ')" >> $GITHUB_OUTPUT
-
-
-      - name: Run Terraform in changed directories
-        if: steps.find_dirs.outputs.pairs != ''
+      - name: Run Terraform in all directories
         shell: bash
         run: |
-          CHANGED_DIRS=$(cat changed_dirs.txt)
           GITHUB_EVENT_NAME="${{ github.event_name }}"
           GITHUB_REF="${{ github.ref }}"
+          TERRAFORM_STATUS="${{ env.TERRAFORM_STATUS }}"
 
-          for dir in $CHANGED_DIRS; do
+          while read dir; do
             echo "🔄 Processing directory: $dir"
-            cd $dir
+            cd "$dir"
 
             terraform init
             terraform fmt
@@ -66,15 +50,15 @@ jobs:
               terraform show -no-color tfplan.out
             fi
 
-            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "${TERRAFORM_STATUS}" = "apply" ]; then
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$TERRAFORM_STATUS" = "apply" ]; then
               echo "🚀 Applying changes..."
               terraform apply --auto-approve || exit 1
             fi
 
-            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "${TERRAFORM_STATUS}" = "destroy" ]; then
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$TERRAFORM_STATUS" = "destroy" ]; then
               echo "🧨 Destroying resources..."
               terraform destroy --auto-approve || exit 1
             fi
 
             cd - || exit 1
-          done
+          done < all_pairs.txt
