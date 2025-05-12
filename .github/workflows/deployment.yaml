@@ -27,29 +27,38 @@ jobs:
         run: |
           echo "Changed directories:"
           CHANGED_DIRS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^SITE-' | grep 'PAIR-' | cut -d/ -f1,2 | sort -u)
-          echo "$CHANGED_DIRS"
-
-          echo "::set-output name=pairs::$(echo $CHANGED_DIRS | tr '\n' ' ')"
+          echo "$CHANGED_DIRS" > changed_dirs.txt
+          echo "pairs=$(echo $CHANGED_DIRS | tr '\n' ' ')" >> $GITHUB_OUTPUT
 
       - name: Run Terraform in changed directories
         if: steps.find_dirs.outputs.pairs != ''
+        shell: bash
         run: |
-          for dir in ${{ steps.find_dirs.outputs.pairs }}; do
-            echo "Processing directory: $dir"
+          CHANGED_DIRS=$(cat changed_dirs.txt)
+          GITHUB_EVENT_NAME="${{ github.event_name }}"
+          GITHUB_REF="${{ github.ref }}"
+
+          for dir in $CHANGED_DIRS; do
+            echo "🔄 Processing directory: $dir"
             cd $dir
+
             terraform init
             terraform fmt
             terraform validate
 
-            if [ "${{ github.event_name }}" = "pull_request" ]; then
-              terraform plan || exit 1
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "📄 Running terraform plan..."
+              terraform plan -no-color -out=tfplan.out || exit 1
+              terraform show -no-color tfplan.out
             fi
 
-            if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ env.TERRAFORM_STATUS }}" = "apply" ]; then
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "${TERRAFORM_STATUS}" = "apply" ]; then
+              echo "🚀 Applying changes..."
               terraform apply --auto-approve || exit 1
             fi
 
-            if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ env.TERRAFORM_STATUS }}" = "destroy" ]; then
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "${TERRAFORM_STATUS}" = "destroy" ]; then
+              echo "🧨 Destroying resources..."
               terraform destroy --auto-approve || exit 1
             fi
 
