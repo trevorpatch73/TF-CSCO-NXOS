@@ -1,0 +1,64 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  deploy:
+    name: Deploy All Pairs
+    runs-on: ubuntu-latest
+    env:
+      TERRAFORM_STATUS: apply
+      TF_VAR_CSCO_NXOS_TF_USERNAME: ${{ secrets.TF_VAR_CSCO_NXOS_TF_USERNAME }}
+      TF_VAR_CSCO_NXOS_TF_PASSWORD: ${{ secrets.TF_VAR_CSCO_NXOS_TF_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Find all SITE-X/PAIR-Y directories
+        id: find_all_pairs
+        run: |
+          echo "🔍 Finding all SITE-X/PAIR-Y directories..."
+          find SITE-* -type d -name "PAIR-*" > all_pairs.txt
+          echo "pairs=$(cat all_pairs.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Run Terraform in all directories
+        shell: bash
+        run: |
+          GITHUB_EVENT_NAME="${{ github.event_name }}"
+          GITHUB_REF="${{ github.ref }}"
+          TERRAFORM_STATUS="${{ env.TERRAFORM_STATUS }}"
+
+          while read dir; do
+            echo "🔄 Processing directory: $dir"
+            cd "$dir"
+
+            terraform init
+            terraform fmt
+            terraform validate
+
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "📄 Running terraform plan..."
+              terraform plan -no-color -out=tfplan.out || exit 1
+              terraform show -no-color tfplan.out
+            fi
+
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$TERRAFORM_STATUS" = "apply" ]; then
+              echo "🚀 Applying changes..."
+              terraform apply --auto-approve || exit 1
+            fi
+
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && [ "$TERRAFORM_STATUS" = "destroy" ]; then
+              echo "🧨 Destroying resources..."
+              terraform destroy --auto-approve || exit 1
+            fi
+
+            cd - || exit 1
+          done < all_pairs.txt
