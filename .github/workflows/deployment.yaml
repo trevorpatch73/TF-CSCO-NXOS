@@ -25,10 +25,24 @@ jobs:
       - name: Find changed pair directories
         id: find_dirs
         run: |
+          echo "🔍 Finding changed SITE-X/PAIR-Y directories..."
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "Fetching base ref: ${{ github.base_ref }}"
+            git fetch origin ${{ github.base_ref }} --depth=1
+            DIFF_BASE="origin/${{ github.base_ref }}"
+          else
+            DIFF_BASE="${{ github.sha }}^"
+          fi
+
+          CHANGED_DIRS=$(git diff --name-only "$DIFF_BASE" ${{ github.sha }} | grep '^SITE-' | grep 'PAIR-' | cut -d/ -f1,2 | sort -u)
+
           echo "Changed directories:"
-          CHANGED_DIRS=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^SITE-' | grep 'PAIR-' | cut -d/ -f1,2 | sort -u)
+          echo "$CHANGED_DIRS"
+
           echo "$CHANGED_DIRS" > changed_dirs.txt
           echo "pairs=$(echo $CHANGED_DIRS | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
 
       - name: Run Terraform in changed directories
         if: steps.find_dirs.outputs.pairs != ''
