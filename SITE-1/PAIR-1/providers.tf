@@ -7,6 +7,11 @@ terraform {
       source = "hashicorp/random"
     }
   }
+  backend "s3" {
+    bucket = "tf-csco-nxos-tfstate"
+    key    = "root/workspaces/github/terraform.tfstate"
+    region = "us-east-1"
+  }  
 }
 
 provider "nxos" {
