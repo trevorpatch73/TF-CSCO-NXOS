@@ -8,7 +8,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket = "TF-CSCO-NXOS-TFSTATE"
+    bucket = "tf-csco-nxos-tfstate"
     key    = "root/workspaces/github/terraform.tfstate"
     region = "us-east-1"
   }  
